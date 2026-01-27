@@ -32,14 +32,17 @@ void nvboard_update() {
   }
 
   static uint64_t last = 0;
-  static int cpf = 1; // count per frame
-  static int cnt = 0;
+  static int cpf = 1; // count per frame 计算一帧要间隔多少周期
+  static int cnt = 0; // 加了 static 只在最开始的时候调用 cnt只初始化1次
   if (unlikely((-- cnt) < 0)) {
     uint64_t now = nvboard_get_time();
     uint64_t diff = now - last;
+
     if (diff == 0) return;
+    
+    // 新的 cpf = 旧的 cpf × 调整比例 ; 调整比例 = 期望间隔 / 实际间隔 ; 期望的刷新间隔 = 1000000 / FPS ; 实际间隔 diff
     int cpf_new = ((uint64_t)cpf * 1000000) / ((uint64_t)diff * FPS); // adjust cpf
-    cnt += cpf_new - cpf;
+    cnt += cpf_new - cpf; // cnt 是真正数间隔的 用新计算好的间隔 替代 旧间隔 下一次就要等这么多周期后 才能进入到这个if里
     cpf = cpf_new;
     if (diff > 1000000 / FPS) {
       last = now;
@@ -54,6 +57,7 @@ void nvboard_update() {
       }
     }
   }
+
 }
 
 void nvboard_init(int vga_clk_cycle) {
@@ -87,7 +91,7 @@ void nvboard_init(int vga_clk_cycle) {
     void init_font(SDL_Renderer *renderer);
     init_font(main_renderer);
     init_render(main_renderer);
-    init_components(main_renderer);
+    init_components(main_renderer); 
     init_gui(main_renderer);
 
     void init_nvboard_timer();
@@ -107,15 +111,20 @@ void nvboard_quit(){
     SDL_Quit();
 }
 
-void nvboard_bind_pin(void *signal, int len, ...) {
-  assert(len < 64);
-  va_list ap;
-  va_start(ap, len);
-  for (int i = 0; i < len; i ++) {
-    uint16_t pin = va_arg(ap, int);
-    pin_array[pin].ptr = signal;
-    pin_array[pin].vector_len = len;
-    pin_array[pin].bit_offset = len - 1 - i;
+void nvboard_bind_pin(void *signal, int len, ...) { // 绑定硬件信号到管脚数组，signal 是信号指针，len 是信号宽度，后续参数是各个管脚编号
+  assert(len < 64); 
+  
+  // va_list va_start va_arg va_end 是c标准库用法
+
+  va_list ap; // 声明可变参数列表 用来接收可变参数形参 
+  va_start(ap, len); // 初始化可变参数列表，从 len 参数后开始 
+  for (int i = 0; i < len; i ++) { // 循环遍历信号的每一位
+    uint16_t pin = va_arg(ap, int); // 从可变参数中取出一个管脚编号 管脚已经被定义成一个数字
+    pin_array[pin].ptr = signal; // 将管脚绑定到信号指针
+    pin_array[pin].vector_len = len; // 记录信号的宽度
+    pin_array[pin].bit_offset = len - 1 - i; // 计算该管脚对应信号中的比特位偏移（高位优先）
   }
-  va_end(ap);
+  va_end(ap); // 结束可变参数列表的使用
 }
+
+
